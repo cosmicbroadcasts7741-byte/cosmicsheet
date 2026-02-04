@@ -1,8 +1,8 @@
-import { Button, TextField, Typography, Grid, Box, Paper } from "@mui/material";
+import { Button, TextField, Typography, Grid, Paper } from "@mui/material";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthProvider";
-import { useRef, useEffect, useState } from "react";
+import { useState } from "react";
 
 import CreateAccount from "./CreateAccount";
 
@@ -29,7 +29,6 @@ export default function LoginPage() {
     },
   });
 
-  // ✅ password toggle handlers (FIXES no-undef error)
   const handleTogglePassword = () => {
     setShowPassword((prev) => !prev);
   };
@@ -66,42 +65,27 @@ export default function LoginPage() {
       minHeight="100vh"
       bgcolor="#E7500F"
     >
-      <Paper
-        elevation={4}
-        sx={{
-          width: 450,
-          p: 4,
-          borderRadius: 3,
-          bgcolor: "#FFBD00",
-        }}
-      >
+      <Paper sx={{ width: 420, p: 4, borderRadius: 3, bgcolor: "#FFBD00" }}>
         {showCreateAccount ? (
           <CreateAccount onBack={() => setShowCreateAccount(false)} />
         ) : (
           <form onSubmit={handleSubmit(onSubmit)}>
             <Grid container direction="column" spacing={3}>
-              <Typography
-                variant="h5"
-                align="center"
-                sx={{ fontWeight: "bold" }}
-              >
+              <Typography variant="h5" align="center" fontWeight="bold">
                 Sign In
               </Typography>
 
               <TextField
                 label="Email"
-                fullWidth
-                {...register("email", {
-                  required: "Email is required",
-                })}
+                {...register("email", { required: "Email is required" })}
                 error={!!errors.email}
                 helperText={errors.email?.message}
+                fullWidth
               />
 
               <TextField
                 label="Password"
                 type={showPassword ? "text" : "password"}
-                fullWidth
                 {...register("password", {
                   required: "Password is required",
                   minLength: {
@@ -111,13 +95,13 @@ export default function LoginPage() {
                 })}
                 error={!!errors.password}
                 helperText={errors.password?.message}
+                fullWidth
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton
                         onClick={handleTogglePassword}
                         onMouseDown={handleMouseDownPassword}
-                        edge="end"
                       >
                         {showPassword ? <VisibilityOff /> : <Visibility />}
                       </IconButton>
@@ -127,13 +111,9 @@ export default function LoginPage() {
               />
 
               <Grid container justifyContent="space-between">
-                <Button
-                  variant="outlined"
-                  onClick={() => setShowCreateAccount(true)}
-                >
+                <Button onClick={() => setShowCreateAccount(true)}>
                   Create Account
                 </Button>
-
                 <Button variant="contained" type="submit">
                   Login
                 </Button>
