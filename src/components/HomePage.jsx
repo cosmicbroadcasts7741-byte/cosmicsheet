@@ -1,7 +1,8 @@
-import { Button, Grid, Paper } from "@mui/material";
+import * as React from "react";
+import { Grid } from "@mui/material";
 import { useAuth } from "../AuthProvider";
 import { useNavigate, Link } from "react-router-dom";
-import * as React from "react";
+
 import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Toolbar from "@mui/material/Toolbar";
@@ -12,29 +13,22 @@ import AccountCircle from "@mui/icons-material/AccountCircle";
 import MenuItem from "@mui/material/MenuItem";
 import Menu from "@mui/material/Menu";
 
-import media3 from "../assets/media3.mp4";
 import starsbg from "../assets/starsbg.mp4";
-import broadcast from "../assets/broadcast.png";
-import messenger from "../assets/messenger.png";
-import moodyfry from "../assets/moodyfry.png";
-import tv from "../assets/tv.png";
 
 import { useRef, useEffect } from "react";
 
 function HomePage() {
-  const media3Ref = useRef(null);
+  const mediaRef = useRef(null);
 
   const [anchorEl, setAnchorEl] = React.useState(null);
-  const [showHologramMenu, setShowHologramMenu] = React.useState(false);
 
   const { logout, firstName, lastName } = useAuth();
   const navigate = useNavigate();
 
-  // ✅ FIX: define auth so ESLint + Netlify don't fail
   const auth = Boolean(firstName);
 
   useEffect(() => {
-    const video = media3Ref.current;
+    const video = mediaRef.current;
     if (!video) return;
 
     const handleLoaded = async () => {
@@ -71,11 +65,11 @@ function HomePage() {
         <Box
           component="video"
           src={starsbg}
+          ref={mediaRef}
           autoPlay
           loop
           muted
           playsInline
-          ref={media3Ref}
           sx={{
             mt: 7,
             position: "fixed",
@@ -95,7 +89,6 @@ function HomePage() {
               edge="start"
               color="inherit"
               sx={{ mr: 2 }}
-              onClick={() => setShowHologramMenu((prev) => !prev)}
             >
               <MenuIcon />
             </IconButton>
@@ -109,7 +102,7 @@ function HomePage() {
             {auth && (
               <>
                 <IconButton onClick={handleMenu} color="inherit">
-                  <Typography>
+                  <Typography sx={{ mr: 1 }}>
                     {firstName} {lastName}
                   </Typography>
                   <AccountCircle sx={{ fontSize: 40 }} />
