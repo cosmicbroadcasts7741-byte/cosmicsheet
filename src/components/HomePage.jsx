@@ -9,9 +9,7 @@ import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
 import MenuIcon from "@mui/icons-material/Menu";
 import AccountCircle from "@mui/icons-material/AccountCircle";
-import Switch from "@mui/material/Switch";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import FormGroup from "@mui/material/FormGroup";
+
 import MenuItem from "@mui/material/MenuItem";
 import Menu from "@mui/material/Menu";
 import media3 from "../assets/media3.mp4";
@@ -20,7 +18,7 @@ import { Link } from "react-router-dom";
 import broadcast from "../assets/broadcast.png";
 import messenger from "../assets/messenger.png";
 import moodyfry from "../assets/moodyfry.png";
-import stars from "../assets/stars.png";
+
 import starsbg from "../assets/starsbg.mp4";
 import tv from "../assets/tv.png";
 
@@ -58,10 +56,6 @@ function HomePage() {
       video.removeEventListener("loadeddata", handleLoaded);
     };
   }, []);
-
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setAuth(event.target.checked);
-  };
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
