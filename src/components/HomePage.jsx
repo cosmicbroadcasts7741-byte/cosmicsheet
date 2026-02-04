@@ -1,4 +1,4 @@
-import { Button, Grid, Paper } from "@mui/material";
+import { Grid, Paper } from "@mui/material";
 import { useAuth } from "../AuthProvider";
 import { useNavigate } from "react-router-dom";
 import * as React from "react";
@@ -57,7 +57,7 @@ function HomePage() {
     };
   }, []);
 
-  const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
+  const handleMenu = (event) => {
     setAnchorEl(event.currentTarget);
   };
 
