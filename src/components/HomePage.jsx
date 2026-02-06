@@ -1,127 +1,170 @@
 import * as React from "react";
-import { Grid } from "@mui/material";
+import { Grid, Avatar, Box } from "@mui/material";
 import { useAuth } from "../AuthProvider";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import AppBar from "@mui/material/AppBar";
-import Box from "@mui/material/Box";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
 import MenuIcon from "@mui/icons-material/Menu";
-import AccountCircle from "@mui/icons-material/AccountCircle";
 import MenuItem from "@mui/material/MenuItem";
 import Menu from "@mui/material/Menu";
-
-import starsbg from "../assets/starsbg.mp4";
-
-import { useRef, useEffect } from "react";
+import { TextField, Button } from "@mui/material";
+import { doc, updateDoc, collection, getDocs } from "firebase/firestore";
+import { db } from "../firebase";
+import { uploadToCloudinary } from "../utils/cloudinaryUpload";
 
 function HomePage() {
-  const mediaRef = useRef(null);
-
+  const { user, profile, logout, setProfile } = useAuth();
+  const [bio, setBio] = React.useState("");
+  const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = React.useState(null);
 
-  const { logout, firstName, lastName } = useAuth();
-  const navigate = useNavigate();
+  const fileInputRef = React.useRef(null);
 
-  const auth = Boolean(firstName);
+  // 🔹 NEW: users list
+  const [users, setUsers] = React.useState([]);
 
-  useEffect(() => {
-    const video = mediaRef.current;
-    if (!video) return;
-
-    const handleLoaded = async () => {
-      try {
-        await video.play();
-      } catch {
-        const handleUserGesture = async () => {
-          await video.play().catch(() => {});
-          window.removeEventListener("click", handleUserGesture);
-        };
-        window.addEventListener("click", handleUserGesture);
-      }
+  React.useEffect(() => {
+    const fetchUsers = async () => {
+      const snap = await getDocs(collection(db, "users"));
+      const list = snap.docs.map((doc) => ({
+        uid: doc.id,
+        ...doc.data(),
+      }));
+      setUsers(list);
     };
 
-    video.addEventListener("loadeddata", handleLoaded);
-    video.loop = true;
-    video.muted = true;
-    video.playsInline = true;
-
-    return () => video.removeEventListener("loadeddata", handleLoaded);
+    fetchUsers();
   }, []);
 
-  const handleMenu = (event) => setAnchorEl(event.currentTarget);
-  const handleClose = () => setAnchorEl(null);
-
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/");
+  };
+  const handleSaveBio = async () => {
+    if (!user) return;
+
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        bio: bio,
+      });
+
+      alert("Bio saved successfully ✅");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save bio ❌");
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+
+    try {
+      const data = await uploadToCloudinary(file, user.uid);
+
+      await updateDoc(doc(db, "users", user.uid), {
+        photoURL: data.secure_url,
+      });
+
+      setProfile((prev) => ({
+        ...prev,
+        photoURL: data.secure_url,
+      }));
+
+      e.target.value = "";
+    } catch (err) {
+      console.error(err);
+      alert("Image upload failed");
+    }
   };
 
   return (
     <Grid>
-      <Box position="relative" minHeight="100vh" overflow="hidden">
-        <Box
-          component="video"
-          src={starsbg}
-          ref={mediaRef}
-          autoPlay
-          loop
-          muted
-          playsInline
-          sx={{
-            mt: 7,
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            zIndex: -1,
-          }}
-        />
+      {/* 🔹 TOP BAR */}
+      <AppBar position="static">
+        <Toolbar>
+          <MenuIcon />
+          <Typography sx={{ ml: 2, flexGrow: 1 }}>Cosmic Sheet</Typography>
 
-        <AppBar position="static" sx={{ bgcolor: "#E7500F" }}>
-          <Toolbar>
-            <IconButton
-              size="large"
-              edge="start"
-              color="inherit"
-              sx={{ mr: 2 }}
+          {user && (
+            <>
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                hidden
+                onChange={handleImageUpload}
+              />
+
+              <IconButton
+                onClick={(e) => setAnchorEl(e.currentTarget)}
+                sx={{ ml: 1 }}
+              >
+                <Typography sx={{ mr: 1 }}>{profile?.firstName}</Typography>
+
+                <Avatar
+                  src={profile?.photoURL || ""}
+                  sx={{ width: 36, height: 36 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current.click();
+                  }}
+                />
+              </IconButton>
+
+              <Menu
+                anchorEl={anchorEl}
+                open={Boolean(anchorEl)}
+                onClose={() => setAnchorEl(null)}
+              >
+                <MenuItem onClick={handleLogout}>Logout</MenuItem>
+              </Menu>
+            </>
+          )}
+        </Toolbar>
+      </AppBar>
+      <Grid container justifyContent="center" sx={{ mt: 4 }}>
+        <Grid item xs={10} md={6}>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Your Bio"
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+          />
+
+          <Button variant="contained" sx={{ mt: 2 }} onClick={handleSaveBio}>
+            Add Bio
+          </Button>
+        </Grid>
+      </Grid>
+
+      {/* 🔹 NEW: USERS LIST (friends / explore) */}
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6">Users</Typography>
+
+        {users
+          .filter((u) => u.uid !== user?.uid)
+          .map((u) => (
+            <Box
+              key={u.uid}
+              onClick={() => navigate(`/user/${u.uid}`)}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                mt: 2,
+                cursor: "pointer",
+              }}
             >
-              <MenuIcon />
-            </IconButton>
-
-            <Typography variant="h6" sx={{ fontWeight: 900 }}>
-              Cosmic-Sheet
-            </Typography>
-
-            <Box sx={{ flexGrow: 1 }} />
-
-            {auth && (
-              <>
-                <IconButton onClick={handleMenu} color="inherit">
-                  <Typography sx={{ mr: 1 }}>
-                    {firstName} {lastName}
-                  </Typography>
-                  <AccountCircle sx={{ fontSize: 40 }} />
-                </IconButton>
-
-                <Menu
-                  anchorEl={anchorEl}
-                  open={Boolean(anchorEl)}
-                  onClose={handleClose}
-                >
-                  <MenuItem component={Link} to="/profile">
-                    Profile
-                  </MenuItem>
-                  <MenuItem onClick={handleLogout}>Logout</MenuItem>
-                </Menu>
-              </>
-            )}
-          </Toolbar>
-        </AppBar>
+              <Avatar src={u.photoURL || ""} />
+              <Typography>{u.firstName}</Typography>
+            </Box>
+          ))}
       </Box>
     </Grid>
   );

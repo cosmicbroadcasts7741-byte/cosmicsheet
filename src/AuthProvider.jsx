@@ -1,45 +1,51 @@
-// AuthProvider.jsx
-import { useState, createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "./firebase";
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState({
-    email: "",
-    firstName: "",
-    lastName: "",
-    mobileNumber: "",
-  });
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const login = (username, password) => {
-    console.log("AuthProvider login method");
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
 
-    // Load saved user from localStorage
-    const savedUser = JSON.parse(localStorage.getItem("savedUser"));
-    if (savedUser && savedUser.email === username) {
-      setUser({
-        email: savedUser.email,
-        firstName: savedUser.firstName,
-        lastName: savedUser.lastName,
-        mobileNumber: savedUser.mobileNumber,
-      });
-      return true;
-    } else {
-      console.error("Invalid username");
-      return false;
-    }
-  };
+        const docRef = doc(db, "users", currentUser.uid);
+        const docSnap = await getDoc(docRef);
 
-  const logout = () =>
-    setUser({
-      email: "",
-      firstName: "",
-      lastName: "",
-      mobileNumber: "",
+        if (docSnap.exists()) {
+          setProfile(docSnap.data());
+        } else {
+          setProfile(null);
+        }
+      } else {
+        setUser(null);
+        setProfile(null);
+      }
+
+      setLoading(false);
     });
 
+    return () => unsubscribe();
+  }, []);
+
+  const logout = async () => {
+    await signOut(auth);
+  };
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: "center", marginTop: "50px" }}>Loading...</div>
+    );
+  }
+
   return (
-    <AuthContext.Provider value={{ ...user, login, logout }}>
+    <AuthContext.Provider value={{ user, profile, logout }}>
       {children}
     </AuthContext.Provider>
   );

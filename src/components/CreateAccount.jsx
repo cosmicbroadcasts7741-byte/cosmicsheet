@@ -2,124 +2,81 @@ import * as React from "react";
 import { Grid, Typography, Button, TextField } from "@mui/material";
 import ArrowBackIosIcon from "@mui/icons-material/ArrowBackIos";
 import { useForm } from "react-hook-form";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, db } from "../firebase";
+import { useNavigate } from "react-router-dom";
 
 function CreateAccount({ onBack }) {
-  const {
-    handleSubmit,
-    register,
-    formState: { errors },
-  } = useForm({
-    defaultValues: {
-      email: "",
-      password: "",
-      firstName: "",
-      lastName: "",
-      mobileNumber: "",
-      confirmPassword: "",
-    },
-  });
+  const navigate = useNavigate();
 
-  const onSubmit = (data) => {
+  const { handleSubmit, register } = useForm();
+
+  const onSubmit = async (data) => {
     if (data.password !== data.confirmPassword) {
       alert("Passwords do not match");
       return;
     }
 
-    const userToSave = {
-      firstName: data.firstName,
-      lastName: data.lastName,
-      mobileNumber: data.mobileNumber,
-      email: data.email,
-      password: data.password,
-    };
-
     try {
-      localStorage.setItem("savedUser", JSON.stringify(userToSave));
-      alert("Account created successfully!");
-      if (typeof onBack === "function") onBack();
-    } catch (err) {
-      console.error("LocalStorage error:", err);
-      alert("Failed to save account.");
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        data.email,
+        data.password
+      );
+
+      const user = userCredential.user;
+
+      await setDoc(doc(db, "users", user.uid), {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        mobileNumber: data.mobileNumber,
+        email: data.email,
+        createdAt: new Date(),
+      });
+
+      alert("Account Created Successfully");
+
+      navigate("/home");
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
     }
   };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
-      <Grid container spacing={3} direction="column" sx={{ m: 4 }}>
-        <Grid>
-          <Typography variant="h5">Create Account</Typography>
-        </Grid>
+      <Grid container spacing={3} direction="column">
+        <Typography variant="h5">Create Account</Typography>
 
-        <Grid>
-          <TextField
-            label="First Name"
-            fullWidth
-            {...register("firstName", { required: "First Name is required" })}
-            error={!!errors.firstName}
-            helperText={errors.firstName?.message}
-          />
-        </Grid>
+        <TextField
+          label="First Name"
+          {...register("firstName", { required: true })}
+        />
+        <TextField
+          label="Last Name"
+          {...register("lastName", { required: true })}
+        />
+        <TextField
+          label="Mobile Number"
+          {...register("mobileNumber", { required: true })}
+        />
+        <TextField label="Email" {...register("email", { required: true })} />
 
-        <Grid>
-          <TextField
-            label="Last Name"
-            fullWidth
-            {...register("lastName", { required: "Last Name is required" })}
-            error={!!errors.lastName}
-            helperText={errors.lastName?.message}
-          />
-        </Grid>
+        <TextField
+          label="Password"
+          type="password"
+          {...register("password", { required: true })}
+        />
 
-        <Grid>
-          <TextField
-            label="Mobile Number"
-            fullWidth
-            type="number"
-            {...register("mobileNumber", {
-              required: "Mobile Number is required",
-            })}
-            error={!!errors.mobileNumber}
-            helperText={errors.mobileNumber?.message}
-          />
-        </Grid>
-
-        <Grid>
-          <TextField
-            label="Email"
-            fullWidth
-            type="email"
-            {...register("email", { required: "Email is required" })}
-            error={!!errors.email}
-            helperText={errors.email?.message}
-          />
-        </Grid>
-
-        <Grid>
-          <TextField
-            label="Password"
-            fullWidth
-            type="password"
-            {...register("password", { required: "Password is required" })}
-            error={!!errors.password}
-            helperText={errors.password?.message}
-          />
-        </Grid>
-
-        <Grid>
-          <TextField
-            label="Confirm Password"
-            fullWidth
-            type="password"
-            {...register("confirmPassword", {
-              required: "Confirm Password is required",
-            })}
-            error={!!errors.confirmPassword}
-            helperText={errors.confirmPassword?.message}
-          />
-        </Grid>
+        <TextField
+          label="Confirm Password"
+          type="password"
+          {...register("confirmPassword", { required: true })}
+        />
 
         <Grid container justifyContent="space-between">
-          <Button variant="outlined" onClick={onBack}>
+          <Button onClick={onBack}>
             <ArrowBackIosIcon />
           </Button>
 

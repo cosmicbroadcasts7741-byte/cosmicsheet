@@ -1,59 +1,34 @@
 import { Button, TextField, Typography, Grid, Paper } from "@mui/material";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../firebase";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../AuthProvider";
 import { useState } from "react";
 
 import CreateAccount from "./CreateAccount";
 
-import Visibility from "@mui/icons-material/Visibility";
-import VisibilityOff from "@mui/icons-material/VisibilityOff";
-import InputAdornment from "@mui/material/InputAdornment";
-import IconButton from "@mui/material/IconButton";
-
 export default function LoginPage() {
   const [showCreateAccount, setShowCreateAccount] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
-  const { login } = useAuth();
 
-  const {
-    handleSubmit,
-    register,
-    formState: { errors },
-  } = useForm({
-    defaultValues: {
-      email: "",
-      password: "",
-    },
-  });
+  const { handleSubmit, register } = useForm();
 
-  const handleTogglePassword = () => {
-    setShowPassword((prev) => !prev);
-  };
+  const onSubmit = async (data) => {
+    try {
+      await signInWithEmailAndPassword(auth, data.email, data.password);
 
-  const handleMouseDownPassword = (event) => {
-    event.preventDefault();
-  };
-
-  const onSubmit = (data) => {
-    const saved = localStorage.getItem("savedUser");
-    if (!saved) {
-      alert("No account found");
-      return;
-    }
-
-    const savedUser = JSON.parse(saved);
-
-    if (
-      savedUser.email === data.email &&
-      savedUser.password === data.password
-    ) {
-      login(data.email);
       navigate("/home");
-    } else {
-      alert("Invalid email or password");
+    } catch (error) {
+      console.error(error);
+
+      if (error.code === "auth/user-not-found") {
+        alert("User not found");
+      } else if (error.code === "auth/wrong-password") {
+        alert("Wrong password");
+      } else {
+        alert(error.message);
+      }
     }
   };
 
@@ -63,58 +38,30 @@ export default function LoginPage() {
       justifyContent="center"
       alignItems="center"
       minHeight="100vh"
-      bgcolor="#E7500F"
     >
-      <Paper sx={{ width: 420, p: 4, borderRadius: 3, bgcolor: "#FFBD00" }}>
+      <Paper sx={{ width: 400, p: 4 }}>
         {showCreateAccount ? (
           <CreateAccount onBack={() => setShowCreateAccount(false)} />
         ) : (
           <form onSubmit={handleSubmit(onSubmit)}>
             <Grid container direction="column" spacing={3}>
-              <Typography variant="h5" align="center" fontWeight="bold">
-                Sign In
+              <Typography variant="h5" align="center">
+                Login
               </Typography>
 
-              <TextField
-                label="Email"
-                {...register("email", { required: "Email is required" })}
-                error={!!errors.email}
-                helperText={errors.email?.message}
-                fullWidth
-              />
-
+              <TextField label="Email" {...register("email")} />
               <TextField
                 label="Password"
-                type={showPassword ? "text" : "password"}
-                {...register("password", {
-                  required: "Password is required",
-                  minLength: {
-                    value: 6,
-                    message: "Minimum 6 characters",
-                  },
-                })}
-                error={!!errors.password}
-                helperText={errors.password?.message}
-                fullWidth
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={handleTogglePassword}
-                        onMouseDown={handleMouseDownPassword}
-                      >
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
+                type="password"
+                {...register("password")}
               />
 
               <Grid container justifyContent="space-between">
                 <Button onClick={() => setShowCreateAccount(true)}>
                   Create Account
                 </Button>
-                <Button variant="contained" type="submit">
+
+                <Button type="submit" variant="contained">
                   Login
                 </Button>
               </Grid>

@@ -1,11 +1,14 @@
-import { useAuth } from "./AuthProvider";
 import { Navigate } from "react-router-dom";
+import { useAuth } from "./AuthProvider";
 
 export default function ProtectedRoute({ children }) {
-  const { email } = useAuth();
-  console.log("ProtectedRoute", email);
-  if (!email) {
-    return <Navigate to="/" />;
+  const { user } = useAuth();
+
+  // Not logged in → redirect
+  if (!user) {
+    return <Navigate to="/" replace />;
   }
-  return <>{children}</>;
+
+  // Logged in → allow page
+  return children;
 }

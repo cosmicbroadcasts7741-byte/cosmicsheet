@@ -8,12 +8,14 @@ import CosmicBroadcast from "./components/CosmicBroadcast.jsx";
 import CosmicMessenger from "./components/CosmicMessenger.jsx";
 import CosmicMoodyFry from "./components/CosmicMoodyFry.jsx";
 import CosmicMedia from "./components/CosmicMedia.jsx";
+import UserProfile from "./components/UserProfile.jsx";
 
 function App() {
   return (
     <div className="App">
       <Routes>
         <Route path="/" element={<LoginPage />} />
+
         <Route
           path="/profile"
           element={
@@ -22,6 +24,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/home"
           element={
@@ -30,6 +33,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/cosmicbroadcast"
           element={
@@ -56,11 +60,21 @@ function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/cosmicmedia"
           element={
             <ProtectedRoute>
               <CosmicMedia />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/user/:uid"
+          element={
+            <ProtectedRoute>
+              <UserProfile />
             </ProtectedRoute>
           }
         />
