@@ -1,4 +1,4 @@
-import { collection, addDoc, onSnapshot, doc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 
 export const createPeerConnection = (chatId, isCaller) => {
@@ -6,7 +6,7 @@ export const createPeerConnection = (chatId, isCaller) => {
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
 
-  const candidatesRef = collection(
+  const localCandidates = collection(
     db,
     "chats",
     chatId,
@@ -15,13 +15,13 @@ export const createPeerConnection = (chatId, isCaller) => {
     isCaller ? "callerCandidates" : "receiverCandidates",
   );
 
-  pc.onicecandidate = async (event) => {
-    if (event.candidate) {
-      await addDoc(candidatesRef, event.candidate.toJSON());
+  pc.onicecandidate = async (e) => {
+    if (e.candidate) {
+      await addDoc(localCandidates, e.candidate.toJSON());
     }
   };
 
-  const remoteCandidatesRef = collection(
+  const remoteCandidates = collection(
     db,
     "chats",
     chatId,
@@ -30,8 +30,8 @@ export const createPeerConnection = (chatId, isCaller) => {
     isCaller ? "receiverCandidates" : "callerCandidates",
   );
 
-  onSnapshot(remoteCandidatesRef, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
+  onSnapshot(remoteCandidates, (snap) => {
+    snap.docChanges().forEach((change) => {
       if (change.type === "added") {
         pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
       }

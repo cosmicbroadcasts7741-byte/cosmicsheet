@@ -9,13 +9,12 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
-  deleteDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { Avatar, Typography, Grid, TextField, Button } from "@mui/material";
 import { useAuth } from "../AuthProvider";
 import { useEffect, useState, useRef } from "react";
-import { uploadToCloudinary } from "../utils/cloudinaryUpload";
+
 import { createPeerConnection } from "../utils/webrtc";
 
 /* 🔊 GLOBAL AUDIO */
