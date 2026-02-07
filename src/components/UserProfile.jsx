@@ -9,17 +9,18 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { Avatar, Typography, Grid, TextField, Button } from "@mui/material";
 import { useAuth } from "../AuthProvider";
 import { useEffect, useState, useRef } from "react";
-
 import { createPeerConnection } from "../utils/webrtc";
 
 /* 🔊 GLOBAL AUDIO */
 const remoteAudio = new Audio();
 remoteAudio.autoplay = true;
+remoteAudio.muted = false;
 
 export default function UserProfile() {
   const { uid } = useParams();
@@ -28,6 +29,7 @@ export default function UserProfile() {
   const [profile, setProfile] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const [incomingCall, setIncomingCall] = useState(null);
 
   const pcRef = useRef(null);
 
@@ -56,47 +58,64 @@ export default function UserProfile() {
     return onSnapshot(q, (s) => setMessages(s.docs.map((d) => d.data())));
   }, [chatId, user]);
 
-  /* 📞 INCOMING CALL */
+  /* 📞 INCOMING CALL LISTENER (NO AUTO ACCEPT) */
   useEffect(() => {
     if (!chatId || !user) return;
 
     const callRef = doc(db, "chats", chatId, "calls", "activeCall");
 
-    const unsub = onSnapshot(callRef, async (snap) => {
+    const unsub = onSnapshot(callRef, (snap) => {
       if (!snap.exists()) return;
+
       const data = snap.data();
 
+      // show popup ONLY if ringing & not already connected
       if (
         data.receiverId === user.uid &&
         data.status === "ringing" &&
         !pcRef.current
       ) {
-        const accept = window.confirm("📞 Incoming call. Accept?");
-        if (!accept) return;
-
-        const pc = createPeerConnection(chatId, false);
-        pcRef.current = pc;
-
-        pc.ontrack = (e) => {
-          remoteAudio.srcObject = e.streams[0];
-          remoteAudio.play().catch(() => {});
-        };
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-
-        await pc.setRemoteDescription(data.offer);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        await setDoc(callRef, { answer, status: "connected" }, { merge: true });
+        setIncomingCall(data);
       }
     });
 
     return () => unsub();
   }, [chatId, user]);
+
+  /* ✅ ACCEPT CALL (USER CLICK = AUDIO ALLOWED) */
+  const acceptCall = async () => {
+    if (!incomingCall) return;
+
+    const pc = createPeerConnection();
+    pcRef.current = pc;
+
+    pc.ontrack = (e) => {
+      remoteAudio.srcObject = e.streams[0];
+      remoteAudio.play().catch(console.error);
+    };
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+
+    await pc.setRemoteDescription(incomingCall.offer);
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    await setDoc(
+      doc(db, "chats", chatId, "calls", "activeCall"),
+      { answer, status: "connected" },
+      { merge: true },
+    );
+
+    setIncomingCall(null);
+  };
+
+  /* ❌ REJECT CALL */
+  const rejectCall = async () => {
+    await deleteDoc(doc(db, "chats", chatId, "calls", "activeCall"));
+    setIncomingCall(null);
+  };
 
   /* 👂 CALLER LISTENS FOR ANSWER */
   useEffect(() => {
@@ -109,7 +128,7 @@ export default function UserProfile() {
       const data = snap.data();
 
       if (
-        data.answer &&
+        data?.answer &&
         pcRef.current &&
         pcRef.current.signalingState !== "stable"
       ) {
@@ -136,12 +155,12 @@ export default function UserProfile() {
   const startCall = async () => {
     if (pcRef.current) return alert("Call already active");
 
-    const pc = createPeerConnection(chatId, true);
+    const pc = createPeerConnection();
     pcRef.current = pc;
 
     pc.ontrack = (e) => {
       remoteAudio.srcObject = e.streams[0];
-      remoteAudio.play().catch(() => {});
+      remoteAudio.play().catch(console.error);
     };
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -174,12 +193,31 @@ export default function UserProfile() {
           {profile.firstName}
         </Typography>
 
+        {/* 📞 INCOMING CALL UI */}
+        {incomingCall && (
+          <Grid sx={{ mt: 2, p: 2, border: "2px solid red" }}>
+            <Typography>📞 Incoming Call</Typography>
+            <Button
+              variant="contained"
+              color="success"
+              sx={{ mr: 1 }}
+              onClick={acceptCall}
+            >
+              Accept
+            </Button>
+            <Button variant="outlined" color="error" onClick={rejectCall}>
+              Reject
+            </Button>
+          </Grid>
+        )}
+
         <Grid
           sx={{
             border: "1px solid #ddd",
             height: 300,
             overflowY: "auto",
             p: 2,
+            mt: 2,
           }}
         >
           {messages.map((m, i) => (
@@ -198,13 +236,16 @@ export default function UserProfile() {
           fullWidth
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
+          sx={{ mt: 1 }}
         />
 
-        <Button fullWidth onClick={sendMessage}>
+        <Button fullWidth sx={{ mt: 1 }} onClick={sendMessage}>
           Send
         </Button>
 
-        <Button onClick={startCall}>📞 Call</Button>
+        <Button sx={{ mt: 1 }} onClick={startCall}>
+          📞 Call
+        </Button>
       </Grid>
     </Grid>
   );
