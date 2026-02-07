@@ -17,9 +17,10 @@ import { uploadToCloudinary } from "../utils/cloudinaryUpload";
 import { setDoc } from "firebase/firestore";
 import { createPeerConnection } from "../utils/webrtc";
 
-/* 🔊 GLOBAL AUDIO ELEMENT (ADDED) */
+/* 🔊 GLOBAL AUDIO ELEMENT */
 const remoteAudio = new Audio();
 remoteAudio.autoplay = true;
+remoteAudio.muted = false;
 
 export default function UserProfile() {
   const { uid } = useParams();
@@ -30,7 +31,7 @@ export default function UserProfile() {
   const [newMessage, setNewMessage] = useState("");
   const [imageFile, setImageFile] = useState(null);
 
-  /* 🧠 STORE PEER CONNECTION (ADDED) */
+  /* 🧠 STORE PEER CONNECTION */
   const pcRef = useRef(null);
 
   const chatId =
@@ -49,22 +50,26 @@ export default function UserProfile() {
     const unsubscribe = onSnapshot(callRef, async (snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
+      if (!data) return;
 
       if (data.receiverId === user.uid && data.status === "ringing") {
         const accept = window.confirm("📞 Incoming call. Accept?");
         if (!accept) return;
 
+        if (pcRef.current) return;
+
         const pc = createPeerConnection();
         pcRef.current = pc;
 
-        /* 🔊 PLAY REMOTE AUDIO (ADDED) */
         pc.ontrack = (e) => {
           remoteAudio.srcObject = e.streams[0];
+          remoteAudio.play().catch(() => {});
         };
 
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
         });
+
         stream.getTracks().forEach((t) => pc.addTrack(t, stream));
 
         await pc.setRemoteDescription(data.offer);
@@ -81,16 +86,19 @@ export default function UserProfile() {
     return () => unsubscribe();
   }, [chatId, user]);
 
-  /* 👂 CALLER LISTENS FOR ANSWER (ADDED) */
+  /* 👂 CALLER LISTENS FOR ANSWER */
   useEffect(() => {
     if (!chatId || !user) return;
 
     const callRef = doc(db, "chats", chatId, "calls", "activeCall");
 
     const unsub = onSnapshot(callRef, async (snap) => {
+      if (!snap.exists()) return;
       const data = snap.data();
+      if (!data) return;
+
       if (
-        data?.answer &&
+        data.answer &&
         pcRef.current &&
         pcRef.current.signalingState !== "stable"
       ) {
@@ -144,12 +152,14 @@ export default function UserProfile() {
 
   /* 📞 START CALL */
   const startCall = async () => {
+    if (pcRef.current) return;
+
     const pc = createPeerConnection();
     pcRef.current = pc;
 
-    /* 🔊 PLAY REMOTE AUDIO (ADDED) */
     pc.ontrack = (e) => {
       remoteAudio.srcObject = e.streams[0];
+      remoteAudio.play().catch(() => {});
     };
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
