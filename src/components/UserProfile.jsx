@@ -14,6 +14,8 @@ import { Avatar, Typography, Grid, TextField, Button } from "@mui/material";
 import { useAuth } from "../AuthProvider";
 import { useEffect, useState } from "react";
 import { uploadToCloudinary } from "../utils/cloudinaryUpload";
+import { setDoc } from "firebase/firestore";
+import { createPeerConnection } from "../utils/webrtc";
 
 export default function UserProfile() {
   const { uid } = useParams(); // clicked user's uid
@@ -101,6 +103,38 @@ export default function UserProfile() {
 
   if (!profile || !user) return <p>Loading profile...</p>;
 
+  const startCall = async () => {
+    if (!chatId || !user) return;
+
+    try {
+      // 1️⃣ Create WebRTC connection
+      const pc = createPeerConnection();
+
+      // 2️⃣ Get microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      // 3️⃣ Create offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // 4️⃣ Save offer to Firestore (signaling)
+      await setDoc(doc(db, "chats", chatId, "calls", "activeCall"), {
+        callerId: user.uid,
+        receiverId: uid, // the profile you're chatting with
+        type: "audio",
+        status: "ringing",
+        offer,
+        createdAt: serverTimestamp(),
+      });
+
+      console.log("📞 Call started");
+    } catch (err) {
+      console.error("Call failed:", err);
+      alert("Could not start call");
+    }
+  };
+
   return (
     <Grid container justifyContent="center" sx={{ mt: 4 }}>
       <Grid item xs={10} md={6}>
@@ -176,6 +210,8 @@ export default function UserProfile() {
         >
           Send
         </Button>
+
+        <Button onClick={startCall}>📞 Call</Button>
 
         {/* IMAGE INPUT */}
         <input
