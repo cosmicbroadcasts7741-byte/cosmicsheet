@@ -10,6 +10,8 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { storage } from "../firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Avatar, Typography, Grid, TextField, Button } from "@mui/material";
 import { useAuth } from "../AuthProvider";
 import { useEffect, useState } from "react";
@@ -21,8 +23,9 @@ export default function UserProfile() {
   const [profile, setProfile] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const [imageFile, setImageFile] = useState(null);
 
-  // ✅ CHAT ID (safe even if user is null)
+  // ✅ CHAT ID
   const chatId =
     user && uid
       ? user.uid < uid
@@ -60,7 +63,7 @@ export default function UserProfile() {
     return () => unsubscribe();
   }, [chatId]);
 
-  // 🔹 Send message
+  // 🔹 Send TEXT message
   const sendMessage = async () => {
     if (!newMessage.trim() || !chatId) return;
 
@@ -68,12 +71,34 @@ export default function UserProfile() {
       text: newMessage,
       senderId: user.uid,
       createdAt: serverTimestamp(),
+      type: "text",
     });
 
     setNewMessage("");
   };
 
-  // ✅ NOW it is safe to return conditionally
+  // 🔹 Send IMAGE message
+  const sendImage = async () => {
+    if (!imageFile || !chatId) return;
+
+    const imageRef = ref(
+      storage,
+      `chatImages/${chatId}/${Date.now()}_${imageFile.name}`,
+    );
+
+    await uploadBytes(imageRef, imageFile);
+    const imageURL = await getDownloadURL(imageRef);
+
+    await addDoc(collection(db, "chats", chatId, "messages"), {
+      imageUrl: imageURL,
+      senderId: user.uid,
+      createdAt: serverTimestamp(),
+      type: "image",
+    });
+
+    setImageFile(null);
+  };
+
   if (!profile || !user) return <p>Loading profile...</p>;
 
   return (
@@ -104,19 +129,38 @@ export default function UserProfile() {
           }}
         >
           {messages.map((msg, i) => (
-            <Typography
+            <Grid
               key={i}
-              align={msg.senderId === user.uid ? "right" : "left"}
               sx={{
+                textAlign: msg.senderId === user.uid ? "right" : "left",
                 mb: 1,
-                color: msg.senderId === user.uid ? "blue" : "black",
               }}
             >
-              {msg.text}
-            </Typography>
+              {msg.type === "text" && (
+                <Typography
+                  sx={{
+                    color: msg.senderId === user.uid ? "blue" : "black",
+                  }}
+                >
+                  {msg.text}
+                </Typography>
+              )}
+
+              {msg.type === "image" && (
+                <img
+                  src={msg.imageUrl}
+                  alt="sent"
+                  style={{
+                    maxWidth: "70%",
+                    borderRadius: 8,
+                  }}
+                />
+              )}
+            </Grid>
           ))}
         </Grid>
 
+        {/* TEXT INPUT */}
         <TextField
           fullWidth
           placeholder="Type a message..."
@@ -131,6 +175,24 @@ export default function UserProfile() {
           onClick={sendMessage}
         >
           Send
+        </Button>
+
+        {/* IMAGE INPUT */}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setImageFile(e.target.files[0])}
+          style={{ marginTop: 12 }}
+        />
+
+        <Button
+          fullWidth
+          sx={{ mt: 1 }}
+          variant="outlined"
+          onClick={sendImage}
+          disabled={!imageFile}
+        >
+          Send Image
         </Button>
       </Grid>
     </Grid>
