@@ -17,9 +17,10 @@ import { useAuth } from "../AuthProvider";
 import { useEffect, useState, useRef } from "react";
 import { createPeerConnection } from "../utils/webrtc";
 
-/* 🔊 GLOBAL AUDIO */
+/* 🔊 GLOBAL AUDIO (IMPORTANT) */
 const remoteAudio = new Audio();
 remoteAudio.autoplay = true;
+remoteAudio.playsInline = true;
 remoteAudio.muted = false;
 
 export default function UserProfile() {
@@ -40,7 +41,17 @@ export default function UserProfile() {
         : `${uid}_${user.uid}`
       : null;
 
-  /* 🔹 FETCH PROFILE */
+  /* ================= CLEANUP ON UNMOUNT ================= */
+  useEffect(() => {
+    return () => {
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+    };
+  }, []);
+
+  /* ================= FETCH PROFILE ================= */
   useEffect(() => {
     if (!uid) return;
     getDoc(doc(db, "users", uid)).then((snap) => {
@@ -48,7 +59,7 @@ export default function UserProfile() {
     });
   }, [uid]);
 
-  /* 🔹 CHAT LISTENER */
+  /* ================= CHAT LISTENER ================= */
   useEffect(() => {
     if (!chatId || !user) return;
     const q = query(
@@ -58,18 +69,17 @@ export default function UserProfile() {
     return onSnapshot(q, (s) => setMessages(s.docs.map((d) => d.data())));
   }, [chatId, user]);
 
-  /* 📞 INCOMING CALL LISTENER (NO AUTO ACCEPT) */
+  /* ================= INCOMING CALL LISTENER ================= */
   useEffect(() => {
     if (!chatId || !user) return;
 
     const callRef = doc(db, "chats", chatId, "calls", "activeCall");
 
-    const unsub = onSnapshot(callRef, (snap) => {
+    return onSnapshot(callRef, (snap) => {
       if (!snap.exists()) return;
 
       const data = snap.data();
 
-      // show popup ONLY if ringing & not already connected
       if (
         data.receiverId === user.uid &&
         data.status === "ringing" &&
@@ -78,20 +88,32 @@ export default function UserProfile() {
         setIncomingCall(data);
       }
     });
-
-    return () => unsub();
   }, [chatId, user]);
 
-  /* ✅ ACCEPT CALL (USER CLICK = AUDIO ALLOWED) */
+  /* ================= ACCEPT CALL ================= */
   const acceptCall = async () => {
-    if (!incomingCall) return;
-
     const pc = createPeerConnection();
     pcRef.current = pc;
 
     pc.ontrack = (e) => {
       remoteAudio.srcObject = e.streams[0];
-      remoteAudio.play().catch(console.error);
+      remoteAudio.play().catch(() => {});
+    };
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        addDoc(
+          collection(
+            db,
+            "chats",
+            chatId,
+            "calls",
+            "activeCall",
+            "receiverCandidates",
+          ),
+          e.candidate.toJSON(),
+        );
+      }
     };
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -109,49 +131,28 @@ export default function UserProfile() {
     );
 
     setIncomingCall(null);
+
+    // listen caller ICE
+    onSnapshot(
+      collection(
+        db,
+        "chats",
+        chatId,
+        "calls",
+        "activeCall",
+        "callerCandidates",
+      ),
+      (snap) => {
+        snap.docChanges().forEach((c) => {
+          if (c.type === "added") {
+            pc.addIceCandidate(c.doc.data());
+          }
+        });
+      },
+    );
   };
 
-  /* ❌ REJECT CALL */
-  const rejectCall = async () => {
-    await deleteDoc(doc(db, "chats", chatId, "calls", "activeCall"));
-    setIncomingCall(null);
-  };
-
-  /* 👂 CALLER LISTENS FOR ANSWER */
-  useEffect(() => {
-    if (!chatId || !user) return;
-
-    const callRef = doc(db, "chats", chatId, "calls", "activeCall");
-
-    const unsub = onSnapshot(callRef, async (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-
-      if (
-        data?.answer &&
-        pcRef.current &&
-        pcRef.current.signalingState !== "stable"
-      ) {
-        await pcRef.current.setRemoteDescription(data.answer);
-      }
-    });
-
-    return () => unsub();
-  }, [chatId, user]);
-
-  /* ✉️ SEND MESSAGE */
-  const sendMessage = async () => {
-    if (!newMessage.trim()) return;
-    await addDoc(collection(db, "chats", chatId, "messages"), {
-      text: newMessage,
-      senderId: user.uid,
-      createdAt: serverTimestamp(),
-      type: "text",
-    });
-    setNewMessage("");
-  };
-
-  /* 📞 START CALL */
+  /* ================= START CALL ================= */
   const startCall = async () => {
     if (pcRef.current) return alert("Call already active");
 
@@ -160,7 +161,23 @@ export default function UserProfile() {
 
     pc.ontrack = (e) => {
       remoteAudio.srcObject = e.streams[0];
-      remoteAudio.play().catch(console.error);
+      remoteAudio.play().catch(() => {});
+    };
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        addDoc(
+          collection(
+            db,
+            "chats",
+            chatId,
+            "calls",
+            "activeCall",
+            "callerCandidates",
+          ),
+          e.candidate.toJSON(),
+        );
+      }
     };
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -172,11 +189,60 @@ export default function UserProfile() {
     await setDoc(doc(db, "chats", chatId, "calls", "activeCall"), {
       callerId: user.uid,
       receiverId: uid,
-      type: "audio",
-      status: "ringing",
       offer,
+      status: "ringing",
       createdAt: serverTimestamp(),
     });
+
+    // listen answer
+    onSnapshot(
+      doc(db, "chats", chatId, "calls", "activeCall"),
+      async (snap) => {
+        const data = snap.data();
+        if (data?.answer && pc.signalingState !== "stable") {
+          await pc.setRemoteDescription(data.answer);
+        }
+      },
+    );
+
+    // listen receiver ICE
+    onSnapshot(
+      collection(
+        db,
+        "chats",
+        chatId,
+        "calls",
+        "activeCall",
+        "receiverCandidates",
+      ),
+      (snap) => {
+        snap.docChanges().forEach((c) => {
+          if (c.type === "added") {
+            pc.addIceCandidate(c.doc.data());
+          }
+        });
+      },
+    );
+  };
+
+  /* ================= END CALL ================= */
+  const endCall = async () => {
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    await deleteDoc(doc(db, "chats", chatId, "calls", "activeCall"));
+  };
+
+  /* ================= SEND MESSAGE ================= */
+  const sendMessage = async () => {
+    if (!newMessage.trim()) return;
+    await addDoc(collection(db, "chats", chatId, "messages"), {
+      text: newMessage,
+      senderId: user.uid,
+      createdAt: serverTimestamp(),
+    });
+    setNewMessage("");
   };
 
   if (!profile) return <p>Loading...</p>;
@@ -188,47 +254,30 @@ export default function UserProfile() {
           src={profile.photoURL}
           sx={{ width: 90, height: 90, mx: "auto" }}
         />
-
         <Typography align="center" variant="h6">
           {profile.firstName}
         </Typography>
 
-        {/* 📞 INCOMING CALL UI */}
         {incomingCall && (
           <Grid sx={{ mt: 2, p: 2, border: "2px solid red" }}>
             <Typography>📞 Incoming Call</Typography>
-            <Button
-              variant="contained"
-              color="success"
-              sx={{ mr: 1 }}
-              onClick={acceptCall}
-            >
+            <Button onClick={acceptCall} color="success" variant="contained">
               Accept
             </Button>
-            <Button variant="outlined" color="error" onClick={rejectCall}>
+            <Button onClick={endCall} color="error" sx={{ ml: 1 }}>
               Reject
             </Button>
           </Grid>
         )}
 
-        <Grid
-          sx={{
-            border: "1px solid #ddd",
-            height: 300,
-            overflowY: "auto",
-            p: 2,
-            mt: 2,
-          }}
-        >
+        <Grid sx={{ border: "1px solid #ddd", height: 300, p: 2, mt: 2 }}>
           {messages.map((m, i) => (
-            <div
+            <Typography
               key={i}
-              style={{
-                textAlign: m.senderId === user.uid ? "right" : "left",
-              }}
+              align={m.senderId === user.uid ? "right" : "left"}
             >
-              {m.text && <Typography>{m.text}</Typography>}
-            </div>
+              {m.text}
+            </Typography>
           ))}
         </Grid>
 
@@ -245,6 +294,10 @@ export default function UserProfile() {
 
         <Button sx={{ mt: 1 }} onClick={startCall}>
           📞 Call
+        </Button>
+
+        <Button sx={{ mt: 1, ml: 1 }} color="error" onClick={endCall}>
+          End Call
         </Button>
       </Grid>
     </Grid>
