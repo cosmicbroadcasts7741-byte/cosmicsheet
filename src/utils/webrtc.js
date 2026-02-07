@@ -1,31 +1,35 @@
+import { collection, addDoc, onSnapshot, doc } from "firebase/firestore";
 import { db } from "../firebase";
-import { doc, collection, addDoc, onSnapshot } from "firebase/firestore";
 
 export const createPeerConnection = (chatId, isCaller) => {
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
 
-  const callRef = doc(db, "chats", chatId, "calls", "activeCall");
-
-  const localCandidatesRef = collection(
-    callRef,
+  const candidatesRef = collection(
+    db,
+    "chats",
+    chatId,
+    "calls",
+    "activeCall",
     isCaller ? "callerCandidates" : "receiverCandidates",
   );
 
-  const remoteCandidatesRef = collection(
-    callRef,
-    isCaller ? "receiverCandidates" : "callerCandidates",
-  );
-
-  // 🔥 SEND ICE CANDIDATES
-  pc.onicecandidate = (event) => {
+  pc.onicecandidate = async (event) => {
     if (event.candidate) {
-      addDoc(localCandidatesRef, event.candidate.toJSON());
+      await addDoc(candidatesRef, event.candidate.toJSON());
     }
   };
 
-  // 🔥 RECEIVE ICE CANDIDATES
+  const remoteCandidatesRef = collection(
+    db,
+    "chats",
+    chatId,
+    "calls",
+    "activeCall",
+    isCaller ? "receiverCandidates" : "callerCandidates",
+  );
+
   onSnapshot(remoteCandidatesRef, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === "added") {

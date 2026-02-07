@@ -8,19 +8,19 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
+  setDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { Avatar, Typography, Grid, TextField, Button } from "@mui/material";
 import { useAuth } from "../AuthProvider";
 import { useEffect, useState, useRef } from "react";
 import { uploadToCloudinary } from "../utils/cloudinaryUpload";
-import { setDoc } from "firebase/firestore";
 import { createPeerConnection } from "../utils/webrtc";
 
-/* 🔊 GLOBAL AUDIO ELEMENT */
+/* 🔊 GLOBAL AUDIO */
 const remoteAudio = new Audio();
 remoteAudio.autoplay = true;
-remoteAudio.muted = false;
 
 export default function UserProfile() {
   const { uid } = useParams();
@@ -29,9 +29,7 @@ export default function UserProfile() {
   const [profile, setProfile] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
-  const [imageFile, setImageFile] = useState(null);
 
-  /* 🧠 STORE PEER CONNECTION */
   const pcRef = useRef(null);
 
   const chatId =
@@ -41,24 +39,43 @@ export default function UserProfile() {
         : `${uid}_${user.uid}`
       : null;
 
-  /* 📞 LISTEN FOR INCOMING CALL */
+  /* 🔹 FETCH PROFILE */
+  useEffect(() => {
+    if (!uid) return;
+    getDoc(doc(db, "users", uid)).then((snap) => {
+      if (snap.exists()) setProfile(snap.data());
+    });
+  }, [uid]);
+
+  /* 🔹 CHAT LISTENER */
+  useEffect(() => {
+    if (!chatId || !user) return;
+    const q = query(
+      collection(db, "chats", chatId, "messages"),
+      orderBy("createdAt"),
+    );
+    return onSnapshot(q, (s) => setMessages(s.docs.map((d) => d.data())));
+  }, [chatId, user]);
+
+  /* 📞 INCOMING CALL */
   useEffect(() => {
     if (!chatId || !user) return;
 
     const callRef = doc(db, "chats", chatId, "calls", "activeCall");
 
-    const unsubscribe = onSnapshot(callRef, async (snap) => {
+    const unsub = onSnapshot(callRef, async (snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
-      if (!data) return;
 
-      if (data.receiverId === user.uid && data.status === "ringing") {
+      if (
+        data.receiverId === user.uid &&
+        data.status === "ringing" &&
+        !pcRef.current
+      ) {
         const accept = window.confirm("📞 Incoming call. Accept?");
         if (!accept) return;
 
-        if (pcRef.current) return;
-
-        const pc = createPeerConnection();
+        const pc = createPeerConnection(chatId, false);
         pcRef.current = pc;
 
         pc.ontrack = (e) => {
@@ -69,21 +86,17 @@ export default function UserProfile() {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
         });
-
         stream.getTracks().forEach((t) => pc.addTrack(t, stream));
 
         await pc.setRemoteDescription(data.offer);
-
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
         await setDoc(callRef, { answer, status: "connected" }, { merge: true });
-
-        console.log("✅ Call accepted");
       }
     });
 
-    return () => unsubscribe();
+    return () => unsub();
   }, [chatId, user]);
 
   /* 👂 CALLER LISTENS FOR ANSWER */
@@ -95,7 +108,6 @@ export default function UserProfile() {
     const unsub = onSnapshot(callRef, async (snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
-      if (!data) return;
 
       if (
         data.answer &&
@@ -103,31 +115,13 @@ export default function UserProfile() {
         pcRef.current.signalingState !== "stable"
       ) {
         await pcRef.current.setRemoteDescription(data.answer);
-        console.log("🔗 Call connected (caller)");
       }
     });
 
     return () => unsub();
   }, [chatId, user]);
 
-  /* FETCH PROFILE */
-  useEffect(() => {
-    if (!uid) return;
-    getDoc(doc(db, "users", uid)).then((snap) => {
-      if (snap.exists()) setProfile(snap.data());
-    });
-  }, [uid]);
-
-  /* CHAT LISTENER */
-  useEffect(() => {
-    if (!chatId || !user) return;
-    const q = query(
-      collection(db, "chats", chatId, "messages"),
-      orderBy("createdAt"),
-    );
-    return onSnapshot(q, (s) => setMessages(s.docs.map((d) => d.data())));
-  }, [chatId, user]);
-
+  /* ✉️ SEND MESSAGE */
   const sendMessage = async () => {
     if (!newMessage.trim()) return;
     await addDoc(collection(db, "chats", chatId, "messages"), {
@@ -139,22 +133,11 @@ export default function UserProfile() {
     setNewMessage("");
   };
 
-  const sendImage = async () => {
-    const data = await uploadToCloudinary(imageFile, user.uid);
-    await addDoc(collection(db, "chats", chatId, "messages"), {
-      imageUrl: data.secure_url,
-      senderId: user.uid,
-      createdAt: serverTimestamp(),
-      type: "image",
-    });
-    setImageFile(null);
-  };
-
   /* 📞 START CALL */
   const startCall = async () => {
-    if (pcRef.current) return;
+    if (pcRef.current) return alert("Call already active");
 
-    const pc = createPeerConnection();
+    const pc = createPeerConnection(chatId, true);
     pcRef.current = pc;
 
     pc.ontrack = (e) => {
@@ -176,8 +159,6 @@ export default function UserProfile() {
       offer,
       createdAt: serverTimestamp(),
     });
-
-    console.log("📞 Call started");
   };
 
   if (!profile) return <p>Loading...</p>;
@@ -189,6 +170,7 @@ export default function UserProfile() {
           src={profile.photoURL}
           sx={{ width: 90, height: 90, mx: "auto" }}
         />
+
         <Typography align="center" variant="h6">
           {profile.firstName}
         </Typography>
@@ -204,10 +186,11 @@ export default function UserProfile() {
           {messages.map((m, i) => (
             <div
               key={i}
-              style={{ textAlign: m.senderId === user.uid ? "right" : "left" }}
+              style={{
+                textAlign: m.senderId === user.uid ? "right" : "left",
+              }}
             >
               {m.text && <Typography>{m.text}</Typography>}
-              {m.imageUrl && <img src={m.imageUrl} width="60%" />}
             </div>
           ))}
         </Grid>
@@ -217,6 +200,7 @@ export default function UserProfile() {
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
         />
+
         <Button fullWidth onClick={sendMessage}>
           Send
         </Button>
