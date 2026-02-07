@@ -34,6 +34,55 @@ export default function UserProfile() {
         : `${uid}_${user.uid}`
       : null;
 
+  useEffect(() => {
+    if (!chatId || !user) return;
+
+    const callRef = doc(db, "chats", chatId, "calls", "activeCall");
+
+    const unsubscribe = onSnapshot(callRef, async (snap) => {
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+
+      // If THIS user is the receiver
+      if (data.receiverId === user.uid && data.status === "ringing") {
+        const accept = window.confirm("📞 Incoming call. Accept?");
+
+        if (!accept) return;
+
+        // 1️⃣ Create peer connection
+        const pc = createPeerConnection();
+
+        // 2️⃣ Get microphone
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+        // 3️⃣ Set remote description (offer)
+        await pc.setRemoteDescription(data.offer);
+
+        // 4️⃣ Create answer
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        // 5️⃣ Save answer back to Firestore
+        await setDoc(
+          callRef,
+          {
+            answer,
+            status: "connected",
+          },
+          { merge: true },
+        );
+
+        console.log("✅ Call accepted");
+      }
+    });
+
+    return () => unsubscribe();
+  }, [chatId, user]);
+
   // 🔹 Fetch profile
   useEffect(() => {
     if (!uid) return;
@@ -130,8 +179,8 @@ export default function UserProfile() {
 
       console.log("📞 Call started");
     } catch (err) {
-      console.error("Call failed:", err);
-      alert("Could not start call");
+      console.error("❌ Call failed FULL ERROR:", err);
+      alert(err.message || "Call failed");
     }
   };
 
