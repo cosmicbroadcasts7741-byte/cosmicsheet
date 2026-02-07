@@ -10,11 +10,10 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { storage } from "../firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Avatar, Typography, Grid, TextField, Button } from "@mui/material";
 import { useAuth } from "../AuthProvider";
 import { useEffect, useState } from "react";
+import { uploadToCloudinary } from "../utils/cloudinaryUpload";
 
 export default function UserProfile() {
   const { uid } = useParams(); // clicked user's uid
@@ -25,7 +24,7 @@ export default function UserProfile() {
   const [newMessage, setNewMessage] = useState("");
   const [imageFile, setImageFile] = useState(null);
 
-  // ✅ CHAT ID
+  // ✅ CHAT ID (stable & correct)
   const chatId =
     user && uid
       ? user.uid < uid
@@ -49,7 +48,7 @@ export default function UserProfile() {
 
   // 🔹 Listen to messages
   useEffect(() => {
-    if (!chatId) return;
+    if (!chatId || !user) return;
 
     const q = query(
       collection(db, "chats", chatId, "messages"),
@@ -61,11 +60,11 @@ export default function UserProfile() {
     });
 
     return () => unsubscribe();
-  }, [chatId]);
+  }, [chatId, user]);
 
   // 🔹 Send TEXT message
   const sendMessage = async () => {
-    if (!newMessage.trim() || !chatId) return;
+    if (!newMessage.trim() || !chatId || !user) return;
 
     await addDoc(collection(db, "chats", chatId, "messages"), {
       text: newMessage,
@@ -77,26 +76,27 @@ export default function UserProfile() {
     setNewMessage("");
   };
 
-  // 🔹 Send IMAGE message
+  // 🔹 Send IMAGE message (🔥 CLOUDINARY ONLY 🔥)
   const sendImage = async () => {
-    if (!imageFile || !chatId) return;
+    if (!imageFile || !chatId || !user) return;
 
-    const imageRef = ref(
-      storage,
-      `chatImages/${chatId}/${Date.now()}_${imageFile.name}`,
-    );
+    try {
+      // 1️⃣ Upload image to Cloudinary
+      const data = await uploadToCloudinary(imageFile, user.uid);
 
-    await uploadBytes(imageRef, imageFile);
-    const imageURL = await getDownloadURL(imageRef);
+      // 2️⃣ Save image URL in Firestore
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        imageUrl: data.secure_url,
+        senderId: user.uid,
+        createdAt: serverTimestamp(),
+        type: "image",
+      });
 
-    await addDoc(collection(db, "chats", chatId, "messages"), {
-      imageUrl: imageURL,
-      senderId: user.uid,
-      createdAt: serverTimestamp(),
-      type: "image",
-    });
-
-    setImageFile(null);
+      setImageFile(null);
+    } catch (err) {
+      console.error("Image send failed:", err);
+      alert("Failed to send image");
+    }
   };
 
   if (!profile || !user) return <p>Loading profile...</p>;
